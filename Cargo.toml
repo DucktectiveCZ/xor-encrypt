@@ -1,0 +1,8 @@
+[package]
+name = "xor_encrypt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.3", features = ["derive"] }
+base64 = "0.21"
