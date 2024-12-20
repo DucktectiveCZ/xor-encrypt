@@ -114,5 +114,5 @@ This project is licensed under the [MIT License](LICENSE).
 
 ---
 
-If you encounter any issues or have questions, please check the repository's [issues section](https://github.com/your-repo-url/issues) or contact the maintainers.
+If you encounter any issues or have questions, please check the repository's [issues section](https://github.com/DucktectiveCZ/xor-encrypt/issues) or contact the maintainers.
 
