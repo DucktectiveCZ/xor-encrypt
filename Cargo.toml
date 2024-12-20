@@ -2,6 +2,8 @@
 name = "xor_encrypt"
 version = "0.1.0"
 edition = "2021"
+authors = ["DucktectiveCZ"]
+license = "MIT"
 
 [dependencies]
 clap = { version = "4.3", features = ["derive"] }
