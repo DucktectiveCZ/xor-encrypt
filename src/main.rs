@@ -1,18 +1,51 @@
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use clap::Parser;
-use std::process::exit;
+use std::fs;
+use base64::Engine as _;
+use clap::{Parser, ValueEnum};
 
-#[derive(Debug)]
-#[derive(Parser)]
+#[derive(ValueEnum, Clone, Debug)]
+enum Operation {
+  Encrypt,
+  Decrypt,
+  EncryptFile,
+  DecryptFile,
+}
+
+#[derive(Parser, Debug)]
 struct Args {
-  operation: String,
-  text: String,
+  #[clap(short, long)]
+  operation: Operation,
+
+  #[clap(short, long, required_if_eq("operation", "Encrypt"), required_if_eq("operation", "Decrypt"))]
+  text: Option<String>,
+
+  #[clap(short, long, required_if_eq("operation", "EncryptFile"), required_if_eq("operation", "DecryptFile"))]
+  file: Option<String>,
+
+  #[clap(short, long)]
   key: String,
 }
 
-impl std::fmt::Display for Args {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "operation: '{}', text: '{}', key: '{}'", self.operation, self.text, self.key)
+impl Args {
+  fn validate(&self) -> Result<(), String> {
+    match self.operation {
+      Operation::Encrypt | Operation::Decrypt => {
+        if self.file.is_some() {
+          return Err("The `file` argument cannot be used with `encrypt` or `decrypt` operations.".to_string());
+        }
+        if self.text.is_none() {
+          return Err("The `text` argument is required for `encrypt` or `decrypt` operations.".to_string());
+        }
+      }
+      Operation::EncryptFile | Operation::DecryptFile => {
+        if self.text.is_some() {
+          return Err("The `text` argument cannot be used with `encrypt-file` or `decrypt-file` operations.".to_string());
+        }
+        if self.file.is_none() {
+          return Err("The `file` argument is required for `encrypt-file` or `decrypt-file` operations.".to_string());
+        }
+      }
+    }
+    Ok(())
   }
 }
 
@@ -40,26 +73,80 @@ fn xor_decrypt(key: &str, ciphertext: &[u8]) -> String {
         .collect()
 }
 
-fn encrypt(args: &Args) -> String {
-  let xor_encrypted = xor_encrypt(args.key.as_str(), args.text.as_str());
-  STANDARD.encode(xor_encrypted)
+fn operation_encrypt(args: &Args) -> Result<(), String> {
+  let encrypted = xor_encrypt(args.key.as_str(), args.text.clone().unwrap().as_str());
+  let base64_encrypted = base64::engine::general_purpose::STANDARD.encode(&encrypted);
+  println!("{}", base64_encrypted);
+  Ok(())
 }
-fn decrypt(args: &Args) -> String {
-  let base64_decoded = STANDARD.decode(&args.text).expect("Error decoding base64 string");
-  xor_decrypt(args.key.as_str(), &base64_decoded)
+fn operation_decrypt(args: &Args) -> Result<(), String> {
+  let base64_decoded;
+  match base64::engine::general_purpose::STANDARD.decode(args.text.clone().unwrap().as_str()) {
+    Ok(val) => base64_decoded = val,
+    Err(e) => return Err(e.to_string()),
+  }
+  let decrypted = xor_decrypt(args.key.as_str(), &base64_decoded);
+  println!("{}", decrypted);
+  Ok(())
+}
+fn operation_encrypt_file(args: &Args) -> Result<(), String> {
+  let file_contents: String;
+  match fs::read_to_string(args.file.clone().unwrap()) {
+    Ok(val) => file_contents = val,
+    Err(e) => return Err(format!("File error: {}", e.to_string())),
+  }
+  let encrypted = xor_encrypt(args.key.as_str(), &file_contents);
+  let base64_encoded = base64::engine::general_purpose::STANDARD.encode(&encrypted);
+  println!("{}", base64_encoded);
+  Ok(())
+}
+fn operation_decrypt_file(args: &Args) -> Result<(), String> {
+  let mut file_contents: String;
+  match fs::read_to_string(args.file.clone().unwrap().as_str()) {
+    Ok(val) => file_contents = val,
+    Err(e) => return Err(format!("File error: {}", e.to_string())),
+  }
+  file_contents.remove(file_contents.len() - 1); // Remove the '\n' at the end
+  let base64_decoded: Vec<u8>;
+  match base64::engine::general_purpose::STANDARD.decode(&file_contents) {
+    Ok(val) => base64_decoded = val,
+    Err(e) => return Err(format!("Base64 error: {}", e.to_string())),
+  }
+  let mut decrypted = xor_decrypt(args.key.as_str(), &base64_decoded);
+  decrypted.remove(decrypted.len() - 1); // Remove the '\n' at the end
+  println!("{}", decrypted);
+  Ok(())
 }
 
 fn main() {
   let args = Args::parse();
+
+  if let Err(e) = args.validate() {
+    eprintln!("Error: {}", e);
+    std::process::exit(1);
+  }
   
-  if args.operation.to_lowercase() == "encrypt" {
-    let encrypted = encrypt(&args);
-    println!("Encrypted: '{}'", encrypted);
-  } else if args.operation.to_lowercase() == "decrypt" {
-    let decrypted = decrypt(&args);
-    println!("Decrypted: '{}'", decrypted);
-  } else {
-    eprintln!("Invalid operation: '{}'", args.operation);
-    exit(1);
+  match args.operation {
+    Operation::Encrypt => 
+      match operation_encrypt(&args) {
+        Ok(_) => (),
+        Err(e) => eprintln!("Error: {}", e),
+      },
+    Operation::Decrypt => 
+      match operation_decrypt(&args) {
+        Ok(_) => (),
+        Err(e) => eprintln!("Error: {}", e),
+      },
+    Operation::EncryptFile =>
+      match operation_encrypt_file(&args) {
+        Ok(_) => (),
+        Err(e) => eprintln!("Error: {}", e),
+      },
+    Operation::DecryptFile =>
+      match operation_decrypt_file(&args) {
+        Ok(_) => (),
+        Err(e) => eprintln!("Error; {}", e),
+      },
   }
 }
+
